@@ -1,0 +1,92 @@
+---
+title: "Predictive Modeling Examples"
+output: html_notebook
+---
+
+```{r setup, includes=FALSE}
+knitr::opts_chunk$set(echon=FALSE,
+                       message=FALSE,
+                       warning=FALSE)
+
+library(tidyverse)
+library(scales)
+library(PerformanceAnalytics)
+
+## get data
+web_data <- read_csv('data/website-channel-landing.csv')
+
+```
+
+## Intro {.tabset}
+
+Examples of various comon approaches to predictive modeling.
+
+### Linear Regression
+
+Initial exploration of metrics
+
+```{r}
+
+## visualization using PerformanceAnalytics:
+chart.Correlation(web_data[,c(3,5,6)], histogram=TRUE, pch=19)
+
+
+```
+
+#### Predicting Bounces based on Sessions
+
+```{r}
+
+ggplot(web_data, aes(x=Sessions, y=Bounces))+geom_point()
+
+```
+
+1. Separate train and test datasets
+
+```{r}
+set.seed(246)
+web_train_rows <- sample(x=row.names(web_data), size=234*.8, replace = FALSE)
+web_train_rows <- sample(seq_len(nrow(web_data)), size=nrow(web_data)*.8, replace=FALSE)
+web_train <- web_data[web_train_rows,]
+web_test <- web_data[-web_train_rows,]
+
+```
+
+2. Create linear regression model on training set
+
+```{r}
+ggplot(web_train, aes(x=Sessions, y=Bounces))+geom_point()+
+  geom_smooth(method=lm)+theme_classic()
+
+web_model <- lm(Bounces~Sessions, data=web_train)
+summary(web_model)
+
+```
+
+3. Try prediction with the model
+
+```{r}
+## Depending variable amounts to predict
+sess <- data.frame(Sessions=c(15,25,35))
+preds <- predict(web_model, sess)
+
+predresult <- data.frame(sess,
+                         Pred=preds)
+
+ggplot(predresult, aes(Sessions, Pred))+geom_point()+
+  geom_smooth(method=lm)+theme_classic()
+
+```
+
+4. Evaluate accuracy of model on training set
+
+```{r}
+
+```
+
+5. Evaluate accuracy on test set
+
+```{r}
+
+```
+
