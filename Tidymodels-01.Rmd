@@ -50,24 +50,106 @@ Get data, clean it up, explore it to understand it better and determine whethe/h
 
 ```{r IMPORT}
 mod_data <- read_csv(here::here('data','soc_search_vid_unit.csv'))
+mod_data_backup <- mod_data ## backup in case changes made later that want to undo
 
 ```
 
 ```{r CHECK}
 glimpse(mod_data)
-any(is.na(mod_data))
 
+cat(paste0('\nAny NAs? ', any(is.na(mod_data))))
 
 ```
 
+If NAs are found, determine where and take a look
 
-#### Clean
+```{r NAs}
+## check for cols with NAs
+mod_data %>%
+  summarise_all(funs(sum(is.na(.))))
+## check rows with essential cols plus NA
+mod_data[!complete.cases(mod_data),c(1,6,11,12,13,14,15)]
 
-* Summarize by channel and drop landing page
-* Calculate bounce rate metric
+```
+
+In this case:
+
+* all NAs are one metric: index
+* relatively few (only 17)
+* mostly low or high week numbers, so shouldn't affect results
+* MAY be something to deal with later through imputation - OR even removal
+
+#### Clean / Simplify
+
+* Doesn't look like any cleaning needed 
+* Re-arrange group, cat, period, week and move units to end
+* Can remove some variables to simplify
+
+```{r CLEAN}
+## determine col nums to move
+#which(colnames(mod_data)=='week')
+#which(colnames(mod_data)=='group')
+#which(colnames(mod_data)=='cat')
+#which(colnames(mod_data)=='period')
+## rearrange cols
+mod_data <- mod_data[,c(1, 16:18, 12,2:11,14:15,13)]
+## remove some less important cols
+mod_data <- mod_data %>% select(-forums, -news, -twitter, -video, -senti_score_avg)
+
+```
+
+#### Viz
+
+Initial visualization
 
 ```{r}
+chart.Correlation(mod_data[,c(6:13)], histogram = TRUE)
+```
 
-mod_data %>% ggplot(aes(x=Sessions, y=Bounces))+geom_point()
+Initial observations:
+
+* some strong correlations throughout
+* scatterplots are messy - possibly due to categorical variables
+* most variables very right skewed with high concentration of low values and long tail (exception being sentiment)
+* looks like big differences in scale -> may need to center/standardize/normalize
+
+```{r SUMMARY}
+summary(mod_data)
+
+```
+
+Yes, looks like will need to center/standardize.
+
+Also, units looks suspicous: how is there negative?
+
+```{r}
+mod_data %>% ggplot(aes(x=units))+geom_histogram()+
+  scale_x_continuous(labels=comma)
+```
+
+Warrants a boxplot...
+
+```{r}
+mod_data %>% ggplot(aes(y=units))+geom_boxplot()+
+  scale_y_continuous(labels=comma)
+
+mod_data %>% filter(units<30000) %>% ggplot(aes(y=units))+geom_boxplot()+
+  scale_y_continuous(labels=comma)
+```
+
+Need to see these units < 0
+
+```{r}
+mod_data %>% filter(units<10)
+```
+
+Further filtering data set to reduce extreme weeks
+
+```{r}
+mod_data %>% ggplot(aes(x=week))+geom_histogram()
+```
+
+```{r}
+mod_data <- mod_data %>% filter(week<=40)
 ```
 
