@@ -48,13 +48,18 @@ Get data, clean it up, explore it to understand it better and determine whethe/h
 
 #### Import and check
 
-```{r}
-web_data <- read_csv(here::here('data','website-channel-landing.csv'))
-
-glimpse(web_data)
-any(is.na(web_data))
+```{r IMPORT}
+mod_data <- read_csv(here::here('data','soc_search_vid_unit.csv'))
 
 ```
+
+```{r CHECK}
+glimpse(mod_data)
+any(is.na(mod_data))
+
+
+```
+
 
 #### Clean
 
@@ -62,8 +67,7 @@ any(is.na(web_data))
 * Calculate bounce rate metric
 
 ```{r}
-web_data <- web_data %>% select(-`Landing Page`)
 
-web_data %>% ggplot(aes(x=Sessions, y=Bounces))+geom_point()
+mod_data %>% ggplot(aes(x=Sessions, y=Bounces))+geom_point()
 ```
 
