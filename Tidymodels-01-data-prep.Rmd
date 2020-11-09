@@ -150,6 +150,22 @@ mod_data %>% ggplot(aes(x=week))+geom_histogram()
 ```
 
 ```{r}
-mod_data <- mod_data %>% filter(week<=40)
+mod_data <- mod_data %>% filter(week<=24)
+
+mod_data %>% ggplot(aes(x=week))+geom_histogram()
+
+mod_data %>% ggplot(aes(x=week, y=units))+geom_col()+
+  scale_y_continuous(labels=comma)
+
+chart.Correlation(mod_data[,c(6:13)], histogram = TRUE)
 ```
+
+Reducing weeks helps to create distributions that are more managable.
+
+Save this data for use in modeling, in separate file.
+
+```{r}
+write_csv(mod_data, 'data/soc_search_vid_unit_model_ready.csv')
+```
+
 
