@@ -1,11 +1,14 @@
 ---
 title: "Tidy-models-Datacamp-1"
 author: "John Yuill"
-date: "May 8, 2021"
-output: html_document
+date: "`r Sys.Date()"
+output: 
+  html_document:
+      code_folding: show
+
 ---
 
-## DataCamp course on Tidy Models pkg
+# DataCamp course on Tidy Models pkg {.tabset}
 
 [Course](https://campus.datacamp.com/courses/modeling-with-tidymodels-in-r)
 
@@ -26,6 +29,18 @@ options(scipen = 10)
 
 Predicting numerical value of outcome variable.
 
+### Steps:
+
+1. Get Data
+2. Split into training / test: initial_split(data, prop, strata))
+3. Specify model parameters: <model type>() %>% set_engine() %>% set_mode()
+4. Fit model: <model params> %>% fit(dependent ~ independent, data)
+5. Generate predictions with test set to evaluate: predict(<fit model>, new_data)
+6. Bind prediction with test data
+7. Evaluate accuracy with rmse: combined test data %>% rmse(truth, estimate)
+8. Visualize accuracy for check
+9. Modify model inputs as needed to try to improve accuracy
+
 ### Get Data
 
 Requirements for predicting numerical outcome: 
@@ -39,7 +54,6 @@ Use **soc_search_vid_unit_model_ready.csv** since readily available.
 ```{r}
 mdata <- read_csv(here('data','soc_search_vid_unit_model_ready.csv'))
 head(mdata)
-
 
 ```
 
@@ -158,6 +172,21 @@ unit_test %>% ggplot(aes(x=units, y=.pred))+geom_point()+
 
 ## Classification: Logistic Regression
 
+Numerical and/or categorical data with binay outcome variable.
+
+### Steps:
+
+1. Get Data
+2. Split into training / test: initial_split(data, prop, strata))
+3. Specify model parameters: <model type>() %>% set_engine() %>% set_mode()
+4. Fit model: <model params> %>% fit(dependent ~ independent, data)
+5. Generate predictions with test set to evaluate: predict(<fit model>, new_data)
+6. Bind prediction with test data
+7. Evaluate accuracy:
+    + confusion matrix
+    + sensitivity vs specificity
+    + other evaluation metrics
+    + ROC AUC
 
 ### Get Data
 
@@ -248,7 +277,9 @@ default_test$default <- fct_relevel(default_test$default, "Yes","No")
 default_test$.pred_class <- fct_relevel(default_test$.pred_class, "Yes","No")
 
 ## get confusion matrix
-confusion <- conf_mat(default_test, truth='default', estimate='.pred_class')
+confusion <- conf_mat(default_test, 
+                      truth=default, 
+                      estimate=.pred_class)
 confusion
 
 no_percent <- sum(confusion$table[,2])/sum(confusion$table)
@@ -263,7 +294,9 @@ no_percent <- sum(confusion$table[,2])/sum(confusion$table)
 * above confusion matrix shows 'No' is `r no_percent*100` % of total, so just predicting ALL as No will give `r no_percent*100` % accuracy. 
 
 ```{r}
-accuracy(default_test, truth='default', estimate='.pred_class')
+accuracy(default_test, 
+         truth=default, 
+         estimate=.pred_class)
 ```
 
 * better than just predicting all as 'No' in this case, but more nuanced evaluation is useful
@@ -276,7 +309,7 @@ accuracy(default_test, truth='default', estimate='.pred_class')
 * sens function same values/structure as conf_matrix & accuracy - easy!
 
 ```{r}
-sens(default_test, truth='default', estimate='.pred_class')
+sens(default_test, truth=default, estimate=.pred_class)
 ```
 
 * Sensitivity is LOW so the model is missing lots of Positives and classifying incorrectly as Negative
@@ -291,7 +324,7 @@ sens(default_test, truth='default', estimate='.pred_class')
 * spec function same values/structure as conf_matrix & accuracy & sens - easy!
 
 ```{r}
-spec(default_test, truth='default', estimate='.pred_class')
+spec(default_test, truth=default, estimate=.pred_class)
 ```
 
 * Very low False Positive Rate
@@ -307,7 +340,7 @@ spec(default_test, truth='default', estimate='.pred_class')
 
 ```{r}
 custom_metric_combo <- metric_set(accuracy, sens, spec)
-custom_metric_combo(default_test, truth='default', estimate='.pred_class')
+custom_metric_combo(default_test, truth=default, estimate=.pred_class)
 ```
 
 * Tells combined story on model accuracy/effectiveness in one place
@@ -325,7 +358,7 @@ custom_metric_combo(default_test, truth='default', estimate='.pred_class')
 * [Yardstick reference]('https://yardstick.tidymodels.org/reference/') - for more info
 
 ```{r}
-conf_mat(default_test, truth='default', estimate='.pred_class') %>%
+conf_mat(default_test, truth=default, estimate=.pred_class) %>%
   summary()
 
 ```
@@ -335,14 +368,14 @@ conf_mat(default_test, truth='default', estimate='.pred_class') %>%
 * Heatmap
 
 ```{r}
-conf_mat(default_test, truth='default', estimate='.pred_class') %>%
+conf_mat(default_test, truth=default, estimate=.pred_class) %>%
   autoplot(type='heatmap')
 ```
 
 * mosaic: balances columns based on proportions
 
 ```{r}
-conf_mat(default_test, truth='default', estimate='.pred_class') %>%
+conf_mat(default_test, truth=default, estimate=.pred_class) %>%
   autoplot(type='mosaic')
 ```
 
@@ -368,3 +401,53 @@ default_test %>% roc_auc(truth=default, .pred_Yes)
 ```
 
 * Seems like very high AUC - I guess function largely of low false positive rate (1-specificity)
+
+## Automation
+
+Use last_fit to combine model fit and test in one step.
+
+### Fit model and evaluate
+
+```{r}
+## need model params and split object
+# logr_model
+# cc_split
+
+cc_last_fit <- logr_model %>% 
+  last_fit(default ~ student+balance+income, split=cc_split)
+
+cc_last_fit %>% collect_metrics()
+
+```
+### Customize metrics
+
+```{r}
+cc_last_fit_results <- cc_last_fit %>% collect_predictions()
+cc_last_fit_results
+
+## reset levels - needed to get yes and no in proper positions
+cc_last_fit_results$default <- fct_relevel(cc_last_fit_results$default, "Yes","No")
+cc_last_fit_results$.pred_class <- fct_relevel(cc_last_fit_results$.pred_class, "Yes","No")
+
+## check confusion matrix
+conf_mat(cc_last_fit_results, 
+                      truth=default, 
+                      estimate=.pred_class)
+
+## select custom metrics of interest
+cc_last_fit_metrics <- metric_set(accuracy,
+                                  sens,
+                                  spec,
+                                  roc_auc)
+## produce custom metrics - should match results in original log reg above
+cc_last_fit_metrics(cc_last_fit_results,
+                    truth=default,
+                    estimate=.pred_class,
+                    .pred_Yes)
+
+#sens(cc_last_fit_results, truth=default, estimate=.pred_class)
+#roc_auc(cc_last_fit_results, truth=default, .pred_Yes)
+
+```
+
+NOTE: metrics here should be same as in original model above. need to make sure 'positive' values are in left col and top row of confusion matrix. relevel if necessary.
