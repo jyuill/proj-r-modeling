@@ -1,0 +1,370 @@
+---
+title: "Tidy-models-Datacamp-1"
+author: "John Yuill"
+date: "May 8, 2021"
+output: html_document
+---
+
+## DataCamp course on Tidy Models pkg
+
+[Course](https://campus.datacamp.com/courses/modeling-with-tidymodels-in-r)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidymodels)
+library(lubridate)
+library(scales)
+library(here)
+library(ISLR) ## for logistic regression sample data
+
+options(scipen = 10)
+```
+
+## Linear Regression Model
+
+Predicting numerical value of outcome variable.
+
+### Get Data
+
+Requirements for predicting numerical outcome: 
+
+* numerical independent/predictor values
+* numerical dependent/outcome variable
+* individual cases with multiple instances of each variable, as opposed to just aggrgated data
+
+Use **soc_search_vid_unit_model_ready.csv** since readily available.
+
+```{r}
+mdata <- read_csv(here('data','soc_search_vid_unit_model_ready.csv'))
+head(mdata)
+
+
+```
+
+### Split into Training and Test sets
+
+* uses functions from rsample pkg
+* initial_split function to set up splitting parameters
+* prop = % split between two groups (usually set for training group proportion)
+* strata = outcome variable, to ensure that each group has equal % representation of the outcome variable
+
+```{r}
+## set up splitting function
+mdata_split <- initial_split(mdata,
+                             prop=0.8,
+                             strata = units)
+## get training
+mdata_train <- mdata_split %>% training
+## get test
+mdata_test <- mdata_split %>% testing
+
+```
+
+### Linear Regression
+
+* functions from parsnip pkg
+* model object: set up model parameters: model function, set_engine, set_mode
+* fit object: apply model parameters to fit a model based on fit values
+* tidy(fit object) to get summary output
+
+#### With Convo Vol
+
+```{r}
+## set up model parameters
+lr_model <- linear_reg() %>%
+  set_engine('lm') %>%
+  set_mode('regression')
+
+lr_fit <- lr_model %>%
+  fit(units ~ convo_vol, data=mdata_train)
+
+print(lr_fit)
+tidy(lr_fit)
+  
+```
+
+#### With Google Search Index
+
+```{r}
+lr_model <- linear_reg() %>%
+  set_engine('lm') %>%
+  set_mode('regression')
+
+lr_fit <- lr_model %>%
+  fit(units ~ index, data=mdata_train)
+
+print(lr_fit)
+tidy(lr_fit)
+  
+```
+
+#### With both
+
+```{r}
+lr_model <- linear_reg() %>%
+  set_engine('lm') %>%
+  set_mode('regression')
+
+lr_fit <- lr_model %>%
+  fit(units ~ convo_vol+index, data=mdata_train)
+
+print(lr_fit)
+tidy(lr_fit)
+  
+```
+
+### Evaluate prediction
+
+* use test data to make predicts based on model and evaluate accuracy
+* generate prediction using test data
+* bind predictions to test data to compare against actuals
+* yardstick pkg: evaluate performance of predictions on test data using functions
+
+#### Generate predictions
+
+* get predictions and combine with actuals
+
+```{r}
+unit_predict <- predict(lr_fit, new_data=mdata_test)
+
+unit_test <- mdata_test %>% select(convo_vol, index, units) %>% bind_cols(unit_predict)
+
+head(unit_test)
+
+```
+
+#### Evaluate accuracy
+
+* yardstick pkg: evaluate performance based on accuracy
+* rmse
+* rsq
+
+```{r}
+## rmse
+unit_test %>% rmse(truth=units, estimate=.pred)
+# rsq
+unit_test %>% rsq(truth=units, estimate=.pred)
+```
+
+#### Visualize Performance
+
+```{r}
+unit_test %>% ggplot(aes(x=units, y=.pred))+geom_point()+
+  geom_abline()+ ## diagonal line
+  coord_obs_pred() ## scale x, y axes to match
+```
+
+## Classification: Logistic Regression
+
+
+### Get Data
+
+* from ISLR pkg - credit card default data
+
+```{r}
+ccdata <- Default
+head(ccdata)
+```
+
+### Split to Training / Test
+
+```{r}
+cc_split <- initial_split(data=ccdata, prop=0.75, strata=default)
+
+cc_training <- cc_split %>% training
+
+cc_test <- cc_split %>% testing
+
+nrow(cc_training)
+nrow(cc_test)
+```
+
+
+### Logistic Regression
+
+Create model on training set.
+
+```{r}
+## function from parsnip
+## specify the model
+logr_model <- logistic_reg() %>%
+  ## set engine
+  set_engine('glm') %>%
+  ## set mode
+  set_mode('classification')
+
+## fit model to training data
+logr_fit <- logr_model %>% fit(default ~ student + balance + income, data=cc_training)
+
+## Print model
+logr_fit
+
+```
+
+### Generate Predictions
+
+* run prediction on test set
+* produces data frame with 1 var: .pred_class (since classification model) 
+* bind predictions to test set for comparison with actual classifications
+
+```{r}
+
+default_predict_class <- predict(logr_fit, new_data=cc_test, type='class')
+
+default_test <- cc_test %>% bind_cols(default_predict_class)
+
+head(default_test)
+
+```
+
+```{r}
+
+default_predict_prob <- predict(logr_fit, new_data=cc_test, type='prob')
+
+default_test <- default_test %>% bind_cols(default_predict_prob)
+
+head(default_test)
+```
+
+### Evaluate  Model
+
+Evaluate predictions.
+
+* Functions from **Yardstick** pkg
+* consistent values/structure for all the functions showcased below
+
+#### Confusion Matrix
+
+* Specify data set, 'truth' column, 'estimate' column
+
+```{r}
+## check levels
+#levels(default_test[['default']])
+#levels(default_test[['.pred_class']])
+## reset levels
+default_test$default <- fct_relevel(default_test$default, "Yes","No")
+default_test$.pred_class <- fct_relevel(default_test$.pred_class, "Yes","No")
+
+## get confusion matrix
+confusion <- conf_mat(default_test, truth='default', estimate='.pred_class')
+confusion
+
+no_percent <- sum(confusion$table[,2])/sum(confusion$table)
+```
+
+#### Check Accuracy
+
+* accuracy functio same values/structure as conf_matrix - easy!
+* calculated as % correct: true positives and true negatives divided by all
+    + (TP+TN)/(TP+FP+TN+FN)
+* generally NOT the best metric - esp if inbalance, predicting dominant class for all will yield high accuracy.
+* above confusion matrix shows 'No' is `r no_percent*100` % of total, so just predicting ALL as No will give `r no_percent*100` % accuracy. 
+
+```{r}
+accuracy(default_test, truth='default', estimate='.pred_class')
+```
+
+* better than just predicting all as 'No' in this case, but more nuanced evaluation is useful
+
+#### Sensitivity
+
+* Sensitivity evaluates how many Positives ('Yes' in this case) were correctly identified
+* Improves with True Positive Rate (prediced positive when actually positive)
+* Low sensitivity means tendency to under-predict positives
+* sens function same values/structure as conf_matrix & accuracy - easy!
+
+```{r}
+sens(default_test, truth='default', estimate='.pred_class')
+```
+
+* Sensitivity is LOW so the model is missing lots of Positives and classifying incorrectly as Negative
+* Very conservative model, unable to confidently differentiate positives from negatives, reluctant to over-commit to positives
+
+#### Specificity
+
+* Specificity evaluates how many Negatives ('No' in this case) were correctly identified
+* Improves with True Negative Rate (predicted negative when actually negative)
+* Low specificity means tendency to over-predict positives, generating False Positives
+* False Positive Rate = 1-Specificity
+* spec function same values/structure as conf_matrix & accuracy & sens - easy!
+
+```{r}
+spec(default_test, truth='default', estimate='.pred_class')
+```
+
+* Very low False Positive Rate
+* Erring on the side of negatives, not wanting to make mistakes on the positive side
+* Could be good in situations where it is more desirable to catch the positives that you are sure of and ok with letting some positives slip through, rather than falsely declaring positives
+    + when limited resources to act on positives and want to have high confidence that the ones acting on are actually positive
+    + stakes of letting positives through is not high (marketing re-targeting vs deadly disease) 
+    
+#### Combine Accuracy, Sensitivity, Specificity
+
+* Custom metric by using metric_set() function in Yardstick
+* metric_set function same values/structure as conf_matrix & accuracy & sens & spec - easy!
+
+```{r}
+custom_metric_combo <- metric_set(accuracy, sens, spec)
+custom_metric_combo(default_test, truth='default', estimate='.pred_class')
+```
+
+* Tells combined story on model accuracy/effectiveness in one place
+* Good or Bad? Depends on purpose
+* Accuracy is high - but needs to be compared to blanket classification
+* Sensitivity is low - depends how important it is to catch ALL the positives
+    + may want a model that has higher likelihood of correctly classifying true positives
+* Specificity is high - depends on tolerance for false positives
+    + may want model that is not as strict and accepts more mis-classification of positives - IF also improves sensitivity to true positives
+    
+#### ALL metrics
+
+* ALL the Binary Classification metrics within Yardstick
+* conf_mat > summary
+* [Yardstick reference]('https://yardstick.tidymodels.org/reference/') - for more info
+
+```{r}
+conf_mat(default_test, truth='default', estimate='.pred_class') %>%
+  summary()
+
+```
+
+#### Visualize Model Results
+
+* Heatmap
+
+```{r}
+conf_mat(default_test, truth='default', estimate='.pred_class') %>%
+  autoplot(type='heatmap')
+```
+
+* mosaic: balances columns based on proportions
+
+```{r}
+conf_mat(default_test, truth='default', estimate='.pred_class') %>%
+  autoplot(type='mosaic')
+```
+
+#### ROC Curve!
+
+* Recieving Operating Characteristic (ROC) Curve
+* Visualize performance across probability thresholds
+* Sensitivity (Y-axis) vs 1-Specificity (X-axis)
+* Optimal: 0,1
+* Diagonal is poor performance -> random 50/50
+
+```{r}
+default_test %>% roc_curve(truth=default, .pred_Yes) %>% autoplot()
+```
+
+#### ROC AUC
+
+* calculate area under ROC curve
+* gives overall performance and enables comparison to alternate models
+
+```{r}
+default_test %>% roc_auc(truth=default, .pred_Yes)
+```
+
+* Seems like very high AUC - I guess function largely of low false positive rate (1-specificity)
