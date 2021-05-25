@@ -451,3 +451,89 @@ cc_last_fit_metrics(cc_last_fit_results,
 ```
 
 NOTE: metrics here should be same as in original model above. need to make sure 'positive' values are in left col and top row of confusion matrix. relevel if necessary.
+
+## Feature Engineering
+
+Using recipes pkg via tidymodels
+
+* logistic regression
+* back to original credit card data (ccdata) 
+
+### Numerical Data
+
+(sidebar: adding a var to demonstrate how to handle multicolinearity)
+
+```{r}
+## add col based on calc from existing col to demonstrate how to handle multi-collinearity
+ccdata2 <- ccdata
+## create new var with controlled random factor of existing var
+for(f in 1:nrow(ccdata2)){
+  ccdata2$fakevar[f] <- ccdata2$balance[f]*rnorm(1, mean=12, sd=2.5)
+}
+## looking for correlation coefficient 0.9-0.98
+cor(ccdata2$balance, ccdata2$fakevar)
+
+## split new data to training and test
+cc2_split <- initial_split(data=ccdata2, prop=0.8, strata=default)
+cc2_train <- cc2_split %>% training()
+cc2_test <- cc2_split %>% testing()
+
+```
+
+Create recipe with prepared data
+
+* step_corr: identify and remove highly correlated variables, based on threshold
+* step_normalize: rescale data by value-mean/sd
+* step_range also demonstrated: rescale variables within specified range
+
+```{r}
+cc2_recipe <- recipe(default ~.,
+                     data=cc2_train) %>%
+  step_corr(all_numeric(), threshold = 0.9) %>%
+  step_normalize(all_numeric())
+
+cc2_recipe
+
+cc2_recipe %>% prep(training=cc2_train) %>% bake(new_data=NULL)
+
+## can also use step_range with min and max if you want to normalize variables
+##  within a specified range (0-100 in this case):
+cc2_rec_rng <- recipe(default ~ ., data=cc2_train) %>%
+  step_range(all_numeric(), min=0, max=100)
+
+cc2_rec_rng %>%
+  prep(training=cc2_train) %>%
+  bake(new_data=NULL)
+```
+
+* 'balance' col is removed due to multicolinearity
+* remaining cols are normalized (value-mean/sd)
+
+Cool but don't know how to control/influence which columns remain when multi-colinearity is detected. Prefer to keep 'balance' rather than 'fakevar'.
+
+(going back to original ccdata)
+
+```{r}
+## create recipe with prep steps
+cc_recipe <- recipe(default ~.,
+                     data=cc_training) %>%
+  step_corr(all_numeric(), threshold = 0.9) %>%
+  step_normalize(all_numeric())
+## check recipe
+cc_recipe
+## apply recipe to training data
+cc_recipe_prep <- cc_recipe %>% prep(training=cc_training)
+
+## apply to test data
+cc_recipe_prep %>% bake(new_data=cc_test)
+
+```
+
+### Categorical Data
+
+aka 'Nominal' data
+
+```{r}
+
+```
+
