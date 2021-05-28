@@ -195,7 +195,22 @@ Numerical and/or categorical data with binay outcome variable.
 ```{r}
 ccdata <- Default
 head(ccdata)
+
+str(ccdata)
 ```
+
+Note that the outcome variable - default - is a binary variable, with class = factor and factors in order 'No' and 'Yes'. This will mess up modelling because will assume that first factor = positive outcome. 
+
+Need to relevel to avoid confusion in the confusion matrix.
+
+```{r}
+## need to relevel outcome variable to have 'positive' outcome first
+## - this will flow through to training and test data sets and for both actual and ## predicted classification
+ccdata$default <- fct_relevel(ccdata$default, "Yes","No")
+## confirm
+str(ccdata)
+```
+
 
 ### Split to Training / Test
 
@@ -272,13 +287,6 @@ Evaluate predictions.
 * Specify data set, 'truth' column, 'estimate' column
 
 ```{r}
-## check levels
-#levels(default_test[['default']])
-#levels(default_test[['.pred_class']])
-## reset levels
-default_test$default <- fct_relevel(default_test$default, "Yes","No")
-default_test$.pred_class <- fct_relevel(default_test$.pred_class, "Yes","No")
-
 ## get confusion matrix
 confusion <- conf_mat(default_test, 
                       truth=default, 
@@ -427,11 +435,7 @@ cc_last_fit %>% collect_metrics()
 cc_last_fit_results <- cc_last_fit %>% collect_predictions()
 cc_last_fit_results
 
-## reset levels - needed to get yes and no in proper positions
-cc_last_fit_results$default <- fct_relevel(cc_last_fit_results$default, "Yes","No")
-cc_last_fit_results$.pred_class <- fct_relevel(cc_last_fit_results$.pred_class, "Yes","No")
-
-## check confusion matrix
+## check confusion matrix - make sure factor levels are in order with 'positive' first
 conf_mat(cc_last_fit_results, 
                       truth=default, 
                       estimate=.pred_class)
@@ -452,11 +456,9 @@ cc_last_fit_metrics(cc_last_fit_results,
 
 ```
 
-NOTE: metrics here should be same as in original model above. need to make sure 'positive' values are in left col and top row of confusion matrix. relevel if necessary.
+## Feat. Eng.
 
-## Feature Engineering
-
-Using recipes pkg via tidymodels (back to original credit card data (ccdata))
+Feature Engineering using recipes pkg via tidymodels (back to original credit card data (ccdata))
 
 * set up the model: logistic regression in this case
 
@@ -575,7 +577,9 @@ recipe(default ~ ., data=cc_training) %>%
 
 ```
 
-## Complete Workflow
+## Workflow I
+
+Combining everything covered so far into complete Classification Model workflow.
 
 ### Summary steps
 
@@ -684,10 +688,6 @@ cc_logreg_results <- cc_test_cat %>% select(default) %>%
 ## check
 head(cc_logreg_results)
 
-## reset levels to get pos / neg in right cols / rows for confusion matrix
-cc_logreg_results$default <- fct_relevel(cc_logreg_results$default, "Yes","No")
-cc_logreg_results$.pred_class <- fct_relevel(cc_logreg_results$.pred_class, "Yes","No")
-
 ## get confusion matrix - how do we get this by %?
 cc_logreg_results %>%
   conf_mat(truth=default, estimate=.pred_class) 
@@ -703,4 +703,11 @@ custom_eval_metrics(cc_logreg_results, truth=default, estimate=.pred_class)
 custom_metric_combo <- metric_set(accuracy, sens, spec)
 custom_metric_combo(default_test, truth=default, estimate=.pred_class)
 ```
+
+Very similar (although not identical) results in this case.
+
+## Workflows & Tuning
+
+More refined workflow and hyperparameter tuning in search of improved prediction.
+
 
