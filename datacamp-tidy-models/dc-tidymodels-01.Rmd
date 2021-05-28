@@ -200,14 +200,17 @@ head(ccdata)
 ### Split to Training / Test
 
 ```{r}
+set.seed(2021) ## set seed to preserve same test / training if recreated later
 cc_split <- initial_split(data=ccdata, prop=0.75, strata=default)
-
 cc_training <- cc_split %>% training
-
 cc_test <- cc_split %>% testing
 
 nrow(cc_training)
 nrow(cc_test)
+
+## check distribution of default / not default for training and test set
+table(cc_training$default)
+table(cc_test$default)
 ```
 
 
@@ -224,8 +227,8 @@ logr_model <- logistic_reg() %>%
   ## set mode
   set_mode('classification')
 
-## fit model to training data
-logr_fit <- logr_model %>% fit(default ~ student + balance + income, data=cc_training)
+## fit model to training data - numerical data only
+logr_fit <- logr_model %>% fit(default ~ balance + income, data=cc_training)
 
 ## Print model
 logr_fit
@@ -360,7 +363,6 @@ custom_metric_combo(default_test, truth=default, estimate=.pred_class)
 ```{r}
 conf_mat(default_test, truth=default, estimate=.pred_class) %>%
   summary()
-
 ```
 
 #### Visualize Model Results
@@ -454,10 +456,10 @@ NOTE: metrics here should be same as in original model above. need to make sure 
 
 ## Feature Engineering
 
-Using recipes pkg via tidymodels
+Using recipes pkg via tidymodels (back to original credit card data (ccdata))
 
-* logistic regression
-* back to original credit card data (ccdata) 
+* set up the model: logistic regression in this case
+
 
 ### Numerical Data
 
@@ -480,11 +482,12 @@ cc2_test <- cc2_split %>% testing()
 
 ```
 
-Create recipe with prepared data
+Create recipe that prepares data for modeling from original ingredients.
 
 * step_corr: identify and remove highly correlated variables, based on threshold
 * step_normalize: rescale data by value-mean/sd
 * step_range also demonstrated: rescale variables within specified range
+* 'bake' the prepared data set
 
 ```{r}
 cc2_recipe <- recipe(default ~.,
@@ -513,6 +516,9 @@ Cool but don't know how to control/influence which columns remain when multi-col
 
 (going back to original ccdata)
 
+* similar preparation according to recipe
+* use the recipe to 'bake' the test data into same preparation (new_data=cc_test)
+
 ```{r}
 ## create recipe with prep steps
 cc_recipe <- recipe(default ~.,
@@ -529,11 +535,172 @@ cc_recipe_prep %>% bake(new_data=cc_test)
 
 ```
 
+Can now evaluate the model on the test data, which is in the same form of the training data, thanks to the same recipe being baked.
+
+(detour to work on categorical data before getting back to modeling and evaluation)
+
 ### Categorical Data
 
 aka 'Nominal' data
 
-```{r}
+* similar workflow as with numerical data
+* convert nominal (categorical) data into numerical, based on whether or not a record is associated with each category item
 
+Create dummy variables
+
+* 'student' is nominal variable, currently expressed as 'Yes' or 'No'
+* step_dummy converts to dummy variable, where student_Yes is either 0 or 1
+* always 1-less dummy variables than values for the nominal variable, since by definition the value of the remaining (dropped) nominal variable will be dictated by the other variables
+    + if student_Yes = 1, then by definition student_No = 0 (and vice versa) so no need to include in model
+
+```{r}
+## create recipe with prep steps
+cc_recipe <- recipe(default ~.,
+                     data=cc_training) %>%
+  step_dummy(all_nominal(), -all_outcomes()) ## converts all nominal variables in data set to dummy variables, except outcome variable
+
+## check recipe
+cc_recipe
+## apply recipe to training data
+cc_recipe_prep <- cc_recipe %>% prep(training=cc_training)
+
+## apply to test data
+cc_recipe_prep %>% bake(new_data=cc_test)
+
+## COMBINE recipe steps into single process
+recipe(default ~ ., data=cc_training) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  prep(training=cc_training) %>%
+  bake(new_data=cc_test)
+
+```
+
+## Complete Workflow
+
+### Summary steps
+
+1. Split data into training / test
+2. Model specification
+3. Feature engineering (independent of model spec - could be done before)
+4. Model fitting
+5. Model prediction
+6. Model evaluation
+
+### 1. Split data into training / test
+
+```{r}
+set.seed(2021) ## set seed same as earlier to generate same training / test data
+cc_split <- initial_split(ccdata, prop=0.75, strat=default)
+cc_train_cat <- cc_split %>% training()
+cc_test_cat <- cc_split %>% testing()
+
+```
+
+```{r, echo=FALSE}
+## check data - compare to original above
+cat('New training and test data for categorical variable inclusion: ')
+nrow(cc_train_cat)
+nrow(cc_test_cat)
+table(cc_train_cat$default)
+table(cc_test_cat$default)
+
+cat('Original training and test data for first model: ')
+nrow(cc_training)
+nrow(cc_test)
+table(cc_training$default)
+table(cc_test$default)
+```
+
+
+### 2. Model Specification
+
+* logistic regression for categorical outcome (default / not default)
+
+```{r}
+## specify the model type
+cc_logreg_model <- logistic_reg() %>%
+  set_engine('glm') %>%
+  set_mode('classification')
+```
+
+### 3. Feature Engineering
+
+* resolve multi-collinearity by removing redundant variables
+* normalize numeric variables
+* create dummy variables for nominal
+* bake the recipe based on above
+
+```{r}
+cc_logreg_recipe <- recipe(default ~ ., data=cc_train_cat) %>%
+  step_corr(all_numeric()) %>% ## remove correlated numeric variables
+  step_normalize(all_numeric()) %>% ## normalize numeric variables
+  step_dummy(all_nominal(), -all_outcomes()) %>% ## convert nominal to dummy vars 
+  prep(training = cc_train_cat)
+cc_logreg_recipe
+  
+## bake training data with recipe for modeling
+cc_train_prep <- cc_logreg_recipe %>%
+  bake(new_data = NULL)
+cc_train_prep
+
+## bake test data with recipe for model evaluation
+cc_test_prep <- cc_logreg_recipe %>%
+  bake(new_data = cc_test_cat)
+cc_test_prep
+
+```
+
+### 4. Model Fitting
+
+```{r}
+cc_logreg_fit <- cc_logreg_model %>% 
+  fit(default ~ ., data=cc_train_prep)
+## check
+cc_logreg_fit
+```
+
+### 5. Model Prediction
+
+```{r}
+## use fitted model to predict class (default or not default) on test data
+cc_logreg_pred_class <- predict(cc_logreg_fit, 
+                          new_data=cc_test_prep,
+                          type='class')
+## use fitted model to predict probabilities of default or not default on test data
+cc_logreg_pred_prob <- predict(cc_logreg_fit, 
+                          new_data=cc_test_prep,
+                          type='prob')
+  
+```
+
+### 6. Model Evaluation
+
+* confusion matrix
+
+```{r}
+## combine test data actual and predicted into same table
+cc_logreg_results <- cc_test_cat %>% select(default) %>%
+  bind_cols(cc_logreg_pred_class, cc_logreg_pred_prob)
+## check
+head(cc_logreg_results)
+
+## reset levels to get pos / neg in right cols / rows for confusion matrix
+cc_logreg_results$default <- fct_relevel(cc_logreg_results$default, "Yes","No")
+cc_logreg_results$.pred_class <- fct_relevel(cc_logreg_results$.pred_class, "Yes","No")
+
+## get confusion matrix - how do we get this by %?
+cc_logreg_results %>%
+  conf_mat(truth=default, estimate=.pred_class) 
+
+```
+```{r}
+custom_eval_metrics <- metric_set(accuracy, sens, spec)
+custom_eval_metrics(cc_logreg_results, truth=default, estimate=.pred_class)
+```
+### Compare to initial logistic regression model
+
+```{r}
+custom_metric_combo <- metric_set(accuracy, sens, spec)
+custom_metric_combo(default_test, truth=default, estimate=.pred_class)
 ```
 
