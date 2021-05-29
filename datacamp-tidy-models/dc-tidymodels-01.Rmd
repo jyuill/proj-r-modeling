@@ -627,7 +627,9 @@ cc_logreg_model <- logistic_reg() %>%
   set_mode('classification')
 ```
 
-### 3. Feature Engineering
+### 3. Feature Engineering 
+
+#### Recipe
 
 * resolve multi-collinearity by removing redundant variables
 * normalize numeric variables
@@ -710,4 +712,185 @@ Very similar (although not identical) results in this case.
 
 More refined workflow and hyperparameter tuning in search of improved prediction.
 
+### Decision Tree model
+
+Use same data set for comparison.
+
+Familiar steps but with a twist: after recipe, use workflow to consolidate process
+
+1. Split data into training / test
+2. Model specification
+3. Feature engineering (recipe)
+4. Workflow combo
+5. Mon
+
+#### Split
+
+```{r}
+set.seed(2021) ## do we need this? or only set.seed once at top?
+cc_split_again <- initial_split(ccdata, prop=0.75, strata=default)
+cc_split_tr <- cc_split_again %>% training()
+cc_split_te <- cc_split_again %>% testing()
+```
+
+#### Spec model
+
+```{r}
+cc_dt <- decision_tree() %>% set_engine('rpart') %>% set_mode('classification')
+
+```
+
+#### Recipe 
+
+```{r}
+cc_rec <- recipe(default ~ ., data=cc_split_tr) %>%
+  step_corr(all_numeric(), threshold=0.85) %>%
+  step_normalize(all_numeric()) %>%
+  step_dummy(all_nominal(), -all_outcomes()) 
+cc_rec
+
+```
+
+#### Workflow
+
+```{r}
+cc_workflow <- workflow() %>%
+  add_model(cc_dt) %>%
+  add_recipe(cc_rec)
+```
+
+#### Fit
+
+```{r}
+cc_workflow_fit <- cc_workflow %>% last_fit(split=cc_split)
+```
+
+#### Evaluate 
+
+```{r}
+cc_workflow_fit %>% collect_metrics()
+
+```
+### Cross-Validation!
+
+Splitting data into training set and test set is fundamental to avoiding overfitting.
+
+Downside is that allows only one estimate of model performance, based on the one combination of training / test set.
+
+Enter cross-validation:
+
+* enables you to iterate over a number of training splits to fit the model and the evaluate against a remaining split.
+    + you are still doing initial split of training vs test set but WITHIN training set you then do further split, fit these independently, evaluate performance against one of the training splits.
+    + so if you have 5 splits within training set, you iterate through 5 times, each time fitting a model to 4 of the training splits and evaluating against remaining training split. (in that way, you cover all permutations) 
+* average of results from different iterations provides more accurate sense of the actual accuracy of the fitted model.
+* K-fold validation to compare different model types. NOT to fit a final model.
+* Once best model type is identified, do a fit on FULL training set and then evaluate on test set.
+
+Based on results, select model type and then fit/predict from there.
+
+#### Create cross-validation folds
+
+```{r}
+set.seed(528)
+cc_train_folds <- vfold_cv(cc_training, ## specify training data
+                           v=5, ## specify number of folds
+                           strata=default)
+cc_train_folds
+```
+
+#### Set custom metrics
+
+```{r}
+cc_metrics <- metric_set(roc_auc, sens, spec)
+```
+
+#### Fit resamples
+
+Using previous decision tree workflow
+
+```{r}
+cc_dt_train_rs <- cc_workflow %>%
+  fit_resamples(resamples=cc_train_folds,
+                metrics=cc_metrics)
+
+```
+
+#### Check performance metrics
+
+```{r}
+cc_dt_train_rs %>% collect_metrics()
+```
+
+### Compare Models with Cross-Validation
+
+Use cross-validation to compare overall performance of two different models, in order to decide which one to use/further refine.
+
+#### 1. Set up new model
+
+```{r}
+cc_log_reg_model <- logistic_reg() %>%
+  set_engine('glm') %>%
+  set_mode('classification')
+
+```
+
+#### 2. Set up workflow with model and recipe
+
+* use previous recipe (?)
+    + will this work, though? because data source is different
+    + or is that ok, as long as similar training data from same original set, with same variables?
+
+```{r}
+cc_workflow_logr <- workflow() %>%
+  add_model(cc_log_reg_model) %>%
+  add_recipe(cc_logreg_recipe)
+```
+
+#### 3. Fit resamples
+
+```{r}
+cc_log_reg_model_rs <- cc_workflow_logr %>%
+  fit_resamples(resample=cc_train_folds,
+                metrics=cc_metrics)
+```
+
+#### 4. Evaluate
+
+```{r}
+cc_log_reg_model_rs %>% collect_metrics
+```
+
+#### 5. Evaluate both
+
+* Decision tree model
+
+```{r}
+cc_dt_results <- cc_dt_train_rs %>%
+  collect_metrics(summarize=FALSE)
+
+cc_dt_results %>%
+  group_by(.metric) %>%
+  summarize(
+    min=min(.estimate),
+    med=median(.estimate),
+    max=max(.estimate)
+  )
+
+```
+
+* Logistic regression model
+
+```{r}
+cc_log_results <- cc_log_reg_model_rs %>%
+  collect_metrics(summarize=FALSE)
+
+cc_log_results %>%
+  group_by(.metric) %>%
+  summarize(
+    min=min(.estimate),
+    med=median(.estimate),
+    max=max(.estimate)
+  )
+
+```
 
