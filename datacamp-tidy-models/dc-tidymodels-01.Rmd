@@ -893,4 +893,119 @@ cc_log_results %>%
   )
 
 ```
+Analysis:
+
+* Logistic regression has much higher ROC AUC
+* Decision tree has better sensitivity, and logistic regression has wider spread, indicating less stability on this metric
+* Specificity is essentially equal
+
+Choice of model type depends on what is most important criteria:
+
+* Logistic regression for overall accuracy
+* Decision tree if sensitivity is primary: may sacrifice some overall ROC for the sake of higher likelihood of catching true positives (lower false positives) and less concern about true negatives (although very slight difference in this case)
+
+### Hyperparameter Tuning
+
+For decision trees - 3 parameters:
+
+* cost_complexity: penalizes large number of nodes (default: 0.01)
+* tree_depth: max length from top to bottom (default: 30)
+* min_n: min number of nodes for splitting (default: 20)
+
+Hyperparameter tuning using cross-validation to find optimal values, rather than just using defaults.
+
+Grid search is most common method.
+
+* produces grid of combinations
+* random generation provides best chance of discovering optimal
+
+#### Update model to incl tuning
+
+```{r}
+cc_dt_ht_model <- decision_tree(cost_complexity=tune(),
+                                tree_depth = tune(),
+                                min_n=tune()) %>%
+  set_engine('rpart') %>%
+  set_mode('classification')
+
+cc_dt_ht_wkflw <- cc_workflow %>%
+  update_model(cc_dt_ht_model)
+
+cc_dt_ht_wkflw
+```
+
+#### Grid Search setup
+
+Hyperparameter tuning with grid search
+
+```{r}
+set.seed(111)
+dt_grid <- grid_random(parameters(cc_dt_ht_model), size=5)
+
+dt_tuning <- cc_dt_ht_wkflw %>%
+  tune_grid(
+    resamples=cc_train_folds,
+    grid=dt_grid,
+    metrics=cc_metrics
+  )
+
+## get average results for grid combos
+dt_tuning %>% collect_metrics()
+```
+#### Evaluate
+
+```{r}
+## show details for each fold and grid 
+dt_tuning_results <- dt_tuning %>% collect_metrics(summarize=FALSE)
+dt_tuning_results
+
+## summarize by roc_auc results
+dt_tuning_results %>% filter(.metric=='roc_auc') %>% group_by(id) %>%
+  summarize(min_roc_auc=min(.estimate),
+            med_roc_auc=median(.estimate),
+            max_roc_auc=max(.estimate)
+            )
+```
+
+Looks like either **Fold 4** (highest median but some spread) OR **Fold 2** yield best results.
+
+#### Finalize Work Flows
+
+More options for identifying best model from **training** data.
+
+```{r}
+## show n best models
+dt_tuning %>% show_best(.metric='roc_auc', n=3)
+```
+Select best model and finalize workflow
+
+```{r}
+dt_tuning_best <- dt_tuning %>% select_best(metric='roc_auc') ## roc_auc is default
+
+cc_dt_ht_wkflw_final <- cc_dt_ht_wkflw %>%
+  finalize_workflow(dt_tuning_best)
+
+cc_dt_ht_wkflw_final
+```
+
+### Apply Model to Test Data
+
+Apply best training model from cross-validation workflow to test data in order to evaluate performance on new data.
+
+```{r}
+cc_dt_final_fit <- cc_dt_ht_wkflw_final %>%
+  last_fit(split=cc_split)
+
+cc_dt_final_fit %>% collect_metrics()
+
+cc_dt_final_fit %>% collect_predictions()
+```
+
+### ROC Curve
+
+```{r}
+cc_dt_final_fit %>% collect_predictions() %>%
+  roc_curve(truth=default, .pred_Yes) %>%
+  autoplot()
+```
 
