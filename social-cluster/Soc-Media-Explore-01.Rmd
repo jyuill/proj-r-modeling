@@ -1,0 +1,106 @@
+---
+title: "Social Media Channel Performance"
+author: "`r Sys.getenv('USER')`"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+    code_fold: hide
+    fig_width: 6
+    fig_height: 4
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message=FALSE,
+                      warning=FALSE,
+                      fig.height=3.5,
+                      fig.width=6)
+
+library(tidyverse)
+library(lubridate)
+library(here)
+library(PerformanceAnalytics)
+library(plotly)
+library(scales)
+library(gridExtra)
+library(DT)
+library(here)
+
+theme_set(theme_bw())
+
+```
+
+## Intro
+
+Exploration of social media data for a variety of owned social media profiles.
+
+### Data
+
+Data summary:
+
+```{r soc}
+data <- read_csv(here('data','soc_media_profiles.csv'))
+## remove farthest outliers
+data_main <- data %>% filter(interactions<7500000)
+```
+
+### Explore
+
+Compare number of posts vs interactions
+
+```{r pressure}
+data_main %>% ggplot(aes(x=posts, y=interactions, avg_ipp, color=Channel))+geom_point()
+
+```
+
+A few major outliers in terms of interactions. Try with *log y-axis*:
+
+```{r}
+## try with log on y-axis
+data_main %>% ggplot(aes(x=posts, y=log(interactions), avg_ipp, color=Channel))+geom_point()
+```
+
+Try again with log on both axis and regression line:
+
+```{r}
+## log both axis plus lm line
+data_main %>% ggplot(aes(x=log(posts), y=log(interactions), avg_ipp))+geom_point()+
+  geom_smooth(method='lm')
+```
+
+Appears to be some reasonable relationship. Breakout linear regression line by Channel to see if varies.
+
+```{r}
+data_main %>% ggplot(aes(x=log(posts), y=log(interactions), avg_ipp, color=Channel))+geom_point()+
+  geom_smooth(method='lm')
+```
+
+Seems to hold overall, with stronger relationship for IG.
+
+Check correlations:
+
+```{r}
+ovc <- cor.test(data_main$interactions, data_main$posts)
+
+data_t <- data_main %>% filter(Channel=='Twitter')
+data_f <- data_main %>% filter(Channel=='Facebook')
+data_i <- data_main %>% filter(Channel=='Instagram')
+
+tc <- cor.test(data_t$interactions, data_t$posts)
+fc <- cor.test(data_f$interactions, data_f$posts)
+ic <- cor.test(data_i$interactions, data_i$posts)
+
+print("Overall:")
+ovc
+print("Twitter")
+tc
+print("Facebook")
+fc
+print("Instagram")
+ic
+```
+
+On closer inspection, only Instagram has statistically significant correlation. 
